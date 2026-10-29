@@ -272,7 +272,6 @@
     <p id="menuAwalSubtitle">Silakan pilih peran Anda untuk melanjutkan</p>
     <div class="menu-buttons">
       <button class="menu-btn menu-btn-siswa" onclick="bukaFormSiswa()">📝 Mulai Ujian (Siswa)</button>
-      <button class="menu-btn menu-btn-warning" id="btnResetMenuAwal" onclick="resetSoalMenuAwal()" style="display:none;">🔄 Reset Ujian / Latihan</button>
       <button class="menu-btn menu-btn-guru" onclick="bukaLoginGuru()">🔑 Login Guru (Kelola Ujian)</button>
     </div>
   </div>
@@ -990,7 +989,7 @@ function simpanEnableReset() { configEnableReset = document.getElementById('togg
 function updateStatusAcak() { const status = document.getElementById('statusAcak'); if (configAcak) { status.innerText = 'AKTIF'; status.className = 'status-badge status-on'; } else { status.innerText = 'NONAKTIF'; status.className = 'status-badge status-off'; } }
 function updateStatusAcakOpsi() { const status = document.getElementById('statusAcakOpsi'); if (configAcakOpsi) { status.innerText = 'AKTIF'; status.className = 'status-badge status-on'; } else { status.innerText = 'NONAKTIF'; status.className = 'status-badge status-off'; } }
 function updateStatusEnableReset() { const status = document.getElementById('statusEnableReset'); if (!status) return; if (configEnableReset) { status.innerText = 'AKTIF (Latihan)'; status.className = 'status-badge status-on'; } else { status.innerText = 'NONAKTIF (Mode UJIAN)'; status.className = 'status-badge status-off'; } }
-function updateResetButtonVisibility() { const btn = document.getElementById('btnResetMenuAwal'); if (!btn) return; btn.style.display = configEnableReset ? 'flex' : 'none'; }
+function updateResetButtonVisibility() { const btn = document.getElementById('btnResetMenuAwal'); if (!btn) return; btn.style.display = configEnableReset ? 'inline-flex' : 'none'; }
 function resetSoalMenuAwal() {
   if (configEnableReset) {
     if (confirm('Yakin ingin mereset/mengulang latihan soal? Semua data pengerjaan sebelumnya akan dibersihkan.')) {
@@ -1615,7 +1614,9 @@ function tampilkanHasil(nilai, benar, isAutoSubmit) {
     scoreDisplayHtml = '<div class="alert-info" style="margin:20px 0; font-size:15px; font-weight:bold;">🔒 Nilai disembunyikan oleh Guru. Hasil ujian Anda telah tersimpan.</div>';
   }
 
-  document.getElementById('resultArea').innerHTML = '<div class="' + resultClass + '"><h2>' + titleText + '</h2><p><strong>Nama:</strong> ' + dataSiswa.nama + '</p><p><strong>Nomor:</strong> ' + dataSiswa.nomor + '</p><p><strong>Kelas:</strong> ' + dataSiswa.kelas + '</p><p style="font-size:12px; color:var(--text-secondary);">Selesai: ' + waktuSelesai + '</p>' + scoreDisplayHtml + '<p>Benar: <strong>' + benar + '</strong> / ' + soalUrutan.length + '</p><p style="margin-top:12px; font-size:16px;"><strong>⚠️ Pelanggaran: <span style="color:#dc2626; font-size:20px;">' + jumlahPelanggaran + '</span> / ' + maxPelanggaranUjian + '</strong></p>' + (isAutoSubmit ? '<p style="color:#991b1b; font-weight:bold; margin-top:8px;">Dikumpulkan otomatis (' + maxPelanggaranUjian + ' pelanggaran)</p>' : '') + '<div id="sheetSendingStatus"></div>' + violationListHtml + forensikHtml + '<div class="locked-box"> <strong>Ujian dikunci.</strong> Hubungi guru untuk reset.</div><button class="btn-reset" style="float:none; margin-top:15px; padding:10px 20px; font-size:14px;" onclick="bukaModalReset()">🔐 Reset (Guru)</button></div>';
+  const resetSiswaBtnHtml = '<button class="menu-btn menu-btn-warning" id="btnResetMenuAwal" onclick="resetSoalMenuAwal()" style="display:' + (configEnableReset ? 'inline-flex' : 'none') + '; margin:12px auto 15px auto;">🔄 Reset Ujian / Latihan</button>';
+
+  document.getElementById('resultArea').innerHTML = '<div class="' + resultClass + '"><h2>' + titleText + '</h2>' + resetSiswaBtnHtml + '<p><strong>Nama:</strong> ' + dataSiswa.nama + '</p><p><strong>Nomor:</strong> ' + dataSiswa.nomor + '</p><p><strong>Kelas:</strong> ' + dataSiswa.kelas + '</p><p style="font-size:12px; color:var(--text-secondary);">Selesai: ' + waktuSelesai + '</p>' + scoreDisplayHtml + '<p>Benar: <strong>' + benar + '</strong> / ' + soalUrutan.length + '</p><p style="margin-top:12px; font-size:16px;"><strong>⚠️ Pelanggaran: <span style="color:#dc2626; font-size:20px;">' + jumlahPelanggaran + '</span> / ' + maxPelanggaranUjian + '</strong></p>' + (isAutoSubmit ? '<p style="color:#991b1b; font-weight:bold; margin-top:8px;">Dikumpulkan otomatis (' + maxPelanggaranUjian + ' pelanggaran)</p>' : '') + '<div id="sheetSendingStatus"></div>' + violationListHtml + forensikHtml + '<div class="locked-box"> <strong>Ujian dikunci.</strong> Hubungi guru untuk reset.</div><button class="btn-reset" style="float:none; margin-top:15px; padding:10px 20px; font-size:14px;" onclick="bukaModalReset()">🔐 Reset (Guru)</button></div>';
 }
 
 function tutupModal(id) { document.getElementById(id).style.display = 'none'; }
