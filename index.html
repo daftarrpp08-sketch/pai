@@ -140,6 +140,34 @@
     padding: 20px; border-radius: 8px; margin-bottom: 20px;
     display: flex; justify-content: space-between; align-items: center;
   }
+  .sync-banner {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-radius: 8px; margin-bottom: 15px;
+    font-size: 13px; font-weight: 500; border: 1px solid transparent;
+    transition: all 0.3s ease; flex-wrap: wrap; gap: 10px;
+  }
+  .sync-banner-info { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+  .sync-banner-success { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+  .sync-banner-warning { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+  .sync-banner-offline { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+  .dark-mode .sync-banner-info { background: #172554; color: #93c5fd; border-color: #1e3a8a; }
+  .dark-mode .sync-banner-success { background: #064e3b; color: #6ee7b7; border-color: #047857; }
+  .dark-mode .sync-banner-warning { background: #451a03; color: #fcd34d; border-color: #78350f; }
+  .dark-mode .sync-banner-offline { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+  .sync-pulse { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+  .sync-pulse-green { background: #10b981; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); animation: pulseGreen 2s infinite; }
+  .sync-pulse-yellow { background: #f59e0b; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); animation: pulseYellow 2s infinite; }
+  .sync-pulse-red { background: #ef4444; }
+  @keyframes pulseGreen {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
+  @keyframes pulseYellow {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  }
   .panel {
     background: var(--bg-primary); border: 1px solid var(--border-color);
     border-radius: 8px; padding: 18px; margin-bottom: 15px; transition: background 0.3s;
@@ -293,6 +321,16 @@
     <div class="dashboard-header">
       <div><h2>🎓 Dashboard Guru <span class="version-badge" id="versionBadge">v5.10</span></h2><p>Kelola pengaturan ujian di sini</p></div>
       <button class="btn btn-danger" onclick="keluarDashboard()" style="padding:8px 15px; font-size:13px;">🚪 Keluar</button>
+    </div>
+
+    <div id="dashboardSyncBanner" class="sync-banner sync-banner-info">
+      <div id="dashboardSyncStatusText">
+        <span class="sync-pulse sync-pulse-green"></span>
+        <span>💾 Perubahan disimpan otomatis di perangkat. Menunggu sambungan internet untuk sinkronisasi ke spreadsheet.</span>
+      </div>
+      <div>
+        <button class="btn btn-secondary" onclick="syncDashboardGuruManual()" style="padding:4px 10px; font-size:12px; white-space:nowrap;">🔄 Sinkron Sekarang</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -526,13 +564,44 @@
 <pre id="kodeGasText" style="background:var(--bg-primary); padding:10px; border-radius:4px; overflow-x:auto; font-size:11px; border:1px solid var(--border-color); color:var(--text-primary); -webkit-user-select:text; user-select:text;">function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000); // Tunggu antrean maksimal 10 detik agar tidak ada bentrok antar HP
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    lock.waitLock(10000); // Tunggu antrean maksimal 10 detik agar tidak ada bentrok antar pengiriman
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
     var data = JSON.parse(e.postData.contents);
-    if (sheet.getLastRow() == 0) {
-      sheet.appendRow(["Timestamp", "Nama", "Nomor Absen", "Kelas", "Nilai", "Benar", "Total Soal", "Pelanggaran", "Auto Submit", "Waktu Selesai"]);
+
+    // 1. Jika sinkronisasi otomatis dari Dashboard Guru
+    if (data.type === 'dashboard_sync') {
+      var sheetGuru = ss.getSheetByName("Pengaturan_Guru");
+      if (!sheetGuru) {
+        sheetGuru = ss.insertSheet("Pengaturan_Guru");
+      }
+      if (sheetGuru.getLastRow() == 0) {
+        sheetGuru.appendRow(["Waktu Sync", "Judul Ujian", "Subjudul", "Token", "Durasi (Menit)", "Jumlah Soal", "Acak Soal", "Acak Opsi", "Batas Pelanggaran", "Nilai Max", "KKM", "Total Bank Soal", "Data Lengkap (JSON)"]);
+      }
+      sheetGuru.appendRow([
+        data.waktuSync || new Date().toLocaleString(),
+        data.judul || "",
+        data.subJudul || "",
+        data.token || "",
+        data.durasi || 0,
+        data.jumlahSoal || 0,
+        data.acak ? "Ya" : "Tidak",
+        data.acakOpsi ? "Ya" : "Tidak",
+        data.maxPelanggaran || 0,
+        data.nilaiMaksimal || 100,
+        data.kkm || 75,
+        data.totalBankSoal || 0,
+        JSON.stringify(data)
+      ]);
+      SpreadsheetApp.flush();
+      return ContentService.createTextOutput(JSON.stringify({result: "success", type: "dashboard_sync"})).setMimeType(ContentService.MimeType.JSON);
     }
-    sheet.appendRow([
+
+    // 2. Pengiriman nilai ujian siswa
+    var sheetSiswa = ss.getSheetByName("Hasil_Ujian") || ss.getActiveSheet();
+    if (sheetSiswa.getLastRow() == 0) {
+      sheetSiswa.appendRow(["Timestamp", "Nama", "Nomor Absen", "Kelas", "Nilai", "Benar", "Total Soal", "Pelanggaran", "Auto Submit", "Waktu Selesai"]);
+    }
+    sheetSiswa.appendRow([
       data.waktuSelesai || new Date(),
       data.nama || "",
       data.nomor || "",
@@ -545,7 +614,7 @@
       data.waktuSelesai || ""
     ]);
     SpreadsheetApp.flush();
-    return ContentService.createTextOutput(JSON.stringify({result: "success"})).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({result: "success", type: "hasil_ujian"})).setMimeType(ContentService.MimeType.JSON);
   } catch(error) {
     return ContentService.createTextOutput(JSON.stringify({result: "error", error: error.toString()})).setMimeType(ContentService.MimeType.JSON);
   } finally {
@@ -781,6 +850,184 @@ function loadDashboardData() {
   document.getElementById('jumlahSoalSaatIni').innerText = soalAktif.length;
   document.getElementById('versionBadge').innerText = 'v' + HTML_VERSION;
   document.getElementById('currentVersionDisplay').innerText = 'v' + HTML_VERSION;
+  initDashboardAutoSave();
+  updateDashboardSyncBannerUI();
+  if (localStorage.getItem('pendingDashboardSync') && navigator.onLine) {
+    prosesAntreanDashboardSync();
+  }
+}
+
+let autoSaveDashboardTimeout = null;
+let isDashboardAutoSaveInitialized = false;
+
+function kumpulkanSemuaDataDashboard() {
+  return {
+    type: 'dashboard_sync',
+    waktuSync: new Date().toLocaleString('id-ID'),
+    timestamp: Date.now(),
+    judul: configJudul,
+    subJudul: configSubJudul,
+    token: configToken,
+    passwordGuru: PASSWORD_GURU,
+    durasi: configDurasi,
+    jumlahSoal: configJumlahSoal,
+    acak: configAcak,
+    acakOpsi: configAcakOpsi,
+    enableReset: configEnableReset,
+    nilaiMaksimal: configNilaiMaksimal,
+    kkm: configNilaiKKM,
+    tampilNilai: configTampilNilai,
+    maxPelanggaran: configMaxPelanggaran,
+    googleSheetUrl: configGoogleSheetUrl,
+    pengaturanCetak: {
+      font: configCetakFont,
+      kertas: configCetakKertas,
+      ukuranFont: configCetakUkuranFont,
+      spasi: configCetakSpasi,
+      marginAtas: configCetakMarginAtas,
+      marginBawah: configCetakMarginBawah,
+      marginKiri: configCetakMarginKiri,
+      marginKanan: configCetakMarginKanan,
+      kunci: configCetakKunci,
+      acak: configCetakAcak
+    },
+    totalBankSoal: (soalAktif || []).length,
+    soalAktif: soalAktif || [],
+    nama: "Pengaturan Guru (Sync Otomatis)",
+    nomor: "GURU-CONFIG",
+    kelas: configJudul,
+    nilai: configNilaiMaksimal,
+    benar: (soalAktif || []).length,
+    totalSoal: (soalAktif || []).length,
+    pelanggaran: 0,
+    autoSubmit: false,
+    waktuSelesai: new Date().toLocaleString('id-ID')
+  };
+}
+
+function simpanDataDashboardOtomatis(triggerSync = true) {
+  try {
+    const inputJudul = document.getElementById('inputJudul');
+    const inputSubJudul = document.getElementById('inputSubJudul');
+    const inputToken = document.getElementById('inputToken');
+    if (inputJudul && inputToken) {
+      const j = inputJudul.value.trim();
+      const sj = inputSubJudul ? inputSubJudul.value.trim() : '';
+      const t = inputToken.value.trim();
+      if (j) { configJudul = j; localStorage.setItem('configJudul', configJudul); }
+      configSubJudul = sj; localStorage.setItem('configSubJudul', configSubJudul);
+      if (t) { configToken = t; localStorage.setItem('configToken', configToken); }
+      updateJudulDiSemuaTempat();
+    }
+
+    const inputWaktu = document.getElementById('inputWaktu');
+    if (inputWaktu) {
+      const w = parseInt(inputWaktu.value);
+      if (!isNaN(w) && w >= 1 && w <= 180) {
+        configDurasi = w; localStorage.setItem('configDurasi', configDurasi);
+      }
+    }
+
+    const inputJml = document.getElementById('inputJumlahSoal');
+    if (inputJml) {
+      const jml = parseInt(inputJml.value);
+      if (!isNaN(jml) && jml >= 0) {
+        configJumlahSoal = jml; localStorage.setItem('configJumlahSoal', configJumlahSoal);
+      }
+    }
+    updateInfoWaktu();
+
+    const tAcak = document.getElementById('toggleAcak');
+    if (tAcak) { configAcak = tAcak.checked; localStorage.setItem('configAcak', configAcak); updateStatusAcak(); }
+    const tAcakOpsi = document.getElementById('toggleAcakOpsi');
+    if (tAcakOpsi) { configAcakOpsi = tAcakOpsi.checked; localStorage.setItem('configAcakOpsi', configAcakOpsi); updateStatusAcakOpsi(); }
+    const tReset = document.getElementById('toggleEnableReset');
+    if (tReset) { configEnableReset = tReset.checked; localStorage.setItem('configEnableReset', configEnableReset); updateStatusEnableReset(); updateResetButtonVisibility(); }
+
+    const inputNilaiMax = document.getElementById('inputNilaiMaksimal');
+    const inputKkm = document.getElementById('inputNilaiKKM');
+    const selTampil = document.getElementById('selectTampilNilai');
+    if (inputNilaiMax && inputKkm && selTampil) {
+      const maxScore = parseInt(inputNilaiMax.value);
+      const kkm = parseInt(inputKkm.value);
+      if (!isNaN(maxScore) && maxScore >= 10) { configNilaiMaksimal = maxScore; localStorage.setItem('configNilaiMaksimal', configNilaiMaksimal); }
+      if (!isNaN(kkm) && kkm <= configNilaiMaksimal) { configNilaiKKM = kkm; localStorage.setItem('configNilaiKKM', configNilaiKKM); }
+      configTampilNilai = selTampil.value === 'true'; localStorage.setItem('configTampilNilai', configTampilNilai);
+    }
+
+    const inputMaxPel = document.getElementById('inputMaxPelanggaran');
+    if (inputMaxPel) {
+      const mp = parseInt(inputMaxPel.value);
+      if (!isNaN(mp) && mp >= 1 && mp <= 20) { configMaxPelanggaran = mp; localStorage.setItem('configMaxPelanggaran', configMaxPelanggaran); }
+    }
+
+    if (document.getElementById('cetakFont')) {
+      configCetakFont = document.getElementById('cetakFont').value; localStorage.setItem('configCetakFont', configCetakFont);
+      configCetakKertas = document.getElementById('cetakKertas').value; localStorage.setItem('configCetakKertas', configCetakKertas);
+      configCetakUkuranFont = document.getElementById('cetakUkuranFont').value; localStorage.setItem('configCetakUkuranFont', configCetakUkuranFont);
+      configCetakSpasi = document.getElementById('cetakSpasi').value; localStorage.setItem('configCetakSpasi', configCetakSpasi);
+      configCetakMarginAtas = document.getElementById('cetakMarginAtas').value; localStorage.setItem('configCetakMarginAtas', configCetakMarginAtas);
+      configCetakMarginBawah = document.getElementById('cetakMarginBawah').value; localStorage.setItem('configCetakMarginBawah', configCetakMarginBawah);
+      configCetakMarginKiri = document.getElementById('cetakMarginKiri').value; localStorage.setItem('configCetakMarginKiri', configCetakMarginKiri);
+      configCetakMarginKanan = document.getElementById('cetakMarginKanan').value; localStorage.setItem('configCetakMarginKanan', configCetakMarginKanan);
+      configCetakKunci = document.getElementById('cetakKunci').value; localStorage.setItem('configCetakKunci', configCetakKunci);
+      configCetakAcak = document.getElementById('cetakAcak').value; localStorage.setItem('configCetakAcak', configCetakAcak);
+    }
+
+    const inputSheet = document.getElementById('inputGoogleSheet');
+    if (inputSheet) {
+      configGoogleSheetUrl = inputSheet.value.trim();
+      localStorage.setItem('configGoogleSheetUrl', configGoogleSheetUrl);
+    }
+
+    localStorage.setItem('soalAktif', JSON.stringify(soalAktif));
+
+    if (triggerSync) {
+      const payload = kumpulkanSemuaDataDashboard();
+      localStorage.setItem('pendingDashboardSync', JSON.stringify(payload));
+      updateDashboardSyncBannerUI('saving');
+      syncDashboardGuru(payload);
+    }
+  } catch (err) {
+    console.error('Error auto-saving dashboard:', err);
+  }
+}
+
+function jadwalkanAutoSave(delay = 500) {
+  if (autoSaveDashboardTimeout) clearTimeout(autoSaveDashboardTimeout);
+  autoSaveDashboardTimeout = setTimeout(() => {
+    simpanDataDashboardOtomatis(true);
+  }, delay);
+}
+
+function initDashboardAutoSave() {
+  if (isDashboardAutoSaveInitialized) return;
+  const inputIds = [
+    'inputJudul', 'inputSubJudul', 'inputToken', 'inputWaktu',
+    'inputJumlahSoal', 'inputNilaiMaksimal', 'inputNilaiKKM',
+    'inputMaxPelanggaran', 'inputGoogleSheet', 'cetakMarginAtas',
+    'cetakMarginBawah', 'cetakMarginKiri', 'cetakMarginKanan'
+  ];
+  inputIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => jadwalkanAutoSave(600));
+      el.addEventListener('change', () => simpanDataDashboardOtomatis(true));
+    }
+  });
+
+  const selectAndToggleIds = [
+    'selectTampilNilai', 'toggleAcak', 'toggleAcakOpsi', 'toggleEnableReset',
+    'cetakFont', 'cetakKertas', 'cetakUkuranFont', 'cetakSpasi', 'cetakKunci', 'cetakAcak'
+  ];
+  selectAndToggleIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => simpanDataDashboardOtomatis(true));
+    }
+  });
+
+  isDashboardAutoSaveInitialized = true;
 }
 
 function simpanPengaturanNilai() {
@@ -822,6 +1069,7 @@ function resetPengaturanNilai() {
   document.getElementById('selectTampilNilai').value = "true";
 
   document.getElementById('statusPengaturanNilai').innerHTML = '<div class="alert-success">✅ Pengaturan score direset ke default (Maksimal: 100, KKM: 75, Tampilkan: Ya).</div>';
+  simpanDataDashboardOtomatis(true);
 }
 
 function salinKodeGas() {
@@ -854,6 +1102,7 @@ function resetGoogleSheet() {
   localStorage.setItem('configGoogleSheetUrl', '');
   document.getElementById('inputGoogleSheet').value = '';
   document.getElementById('statusGoogleSheet').innerHTML = '<div class="alert-info">ℹ️ URL Google Apps Script dikosongkan.</div>';
+  simpanDataDashboardOtomatis(true);
 }
 
 function tesKirimGoogleSheet() {
@@ -899,6 +1148,7 @@ function resetJudul() {
   document.getElementById('inputJudul').value = configJudul; document.getElementById('inputSubJudul').value = configSubJudul; document.getElementById('inputToken').value = configToken;
   updateJudulDiSemuaTempat();
   document.getElementById('statusJudul').innerHTML = '<div class="alert-success">✅ Direset ke default</div>';
+  simpanDataDashboardOtomatis(true);
 }
 
 function togglePwd(inputId) { const input = document.getElementById(inputId); input.type = input.type === 'password' ? 'text' : 'password'; }
@@ -924,6 +1174,7 @@ function ubahPassword() {
   document.getElementById('pwdLama').value = ''; document.getElementById('pwdBaru').value = ''; document.getElementById('pwdKonfirmasi').value = '';
   document.getElementById('pwdStrength').innerHTML = ''; updatePasswordDisplay();
   document.getElementById('statusPassword').innerHTML = '<div class="alert-success">✅ Password berhasil diubah!</div>';
+  simpanDataDashboardOtomatis(true);
 }
 
 function resetPasswordDefault() {
@@ -932,6 +1183,7 @@ function resetPasswordDefault() {
   document.getElementById('pwdLama').value = ''; document.getElementById('pwdBaru').value = ''; document.getElementById('pwdKonfirmasi').value = '';
   updatePasswordDisplay();
   document.getElementById('statusPassword').innerHTML = '<div class="alert-success">✅ Password direset ke: <strong>guru123</strong></div>';
+  simpanDataDashboardOtomatis(true);
 }
 
 function simpanWaktu() {
@@ -985,6 +1237,7 @@ function importExcel(event) {
       soalAktif = soalBaru; localStorage.setItem('soalAktif', JSON.stringify(soalBaru));
       document.getElementById('statusImport').innerHTML = '<div class="alert-success">✅ Berhasil import <strong>' + soalBaru.length + ' soal</strong>.</div>';
       document.getElementById('jumlahSoalSaatIni').innerText = soalAktif.length; tampilkanPreview(soalBaru);
+      simpanDataDashboardOtomatis(true);
     } catch (err) { document.getElementById('statusImport').innerHTML = '<div class="alert-error">❌ Error: ' + err.message + '</div>'; }
     finally { if (inputElement) inputElement.value = ''; }
   };
@@ -1011,6 +1264,7 @@ function resetSoalDefault() {
   document.getElementById('jumlahSoalSaatIni').innerText = soalAktif.length;
   document.getElementById('previewSoal').innerHTML = '';
   document.getElementById('statusImport').innerHTML = '<div class="alert-success">✅ Soal direset ke default</div>';
+  simpanDataDashboardOtomatis(true);
 }
 
 function simpanAcak() { configAcak = document.getElementById('toggleAcak').checked; localStorage.setItem('configAcak', configAcak); updateStatusAcak(); }
@@ -1052,6 +1306,7 @@ function resetMaxPelanggaran() {
   document.getElementById('inputMaxPelanggaran').value = 5;
   document.getElementById('statusMaxPelanggaran').innerHTML = '<div class="alert-success">✅ Batas pelanggaran direset ke: <strong>5 kali</strong></div>';
   updateInfoWaktu();
+  simpanDataDashboardOtomatis(true);
 }
 
 function getPengaturanCetak() {
@@ -1365,6 +1620,9 @@ function simpanSemuaPengaturan() {
     if (statusElem) {
       statusElem.innerHTML = '<div class="alert-success">✅ <strong>SEMUA PENGATURAN BERHASIL DISIMPAN!</strong><br>Seluruh perubahan telah tersimpan di browser Anda.<br>📌 Klik <strong>"Download HTML Terbaru"</strong> jika ingin membagikan file HTML terkini ke siswa.</div>';
     }
+    const payload = kumpulkanSemuaDataDashboard();
+    localStorage.setItem('pendingDashboardSync', JSON.stringify(payload));
+    syncDashboardGuru(payload);
   } catch (err) {
     const statusElem = document.getElementById('statusSimpanSemua');
     if (statusElem) {
@@ -1566,6 +1824,132 @@ function mulaiTimer() {
 function kumpulkan() { const elapsed = Math.floor((Date.now() - waktuMulai) / 1000); if (elapsed < durasi) { alert('Anda belum dapat mengumpulkan sebelum waktu habis!\n\nSisa waktu: ' + Math.ceil((durasi - elapsed)/60) + ' menit lagi.'); return; } submitUjian(false); }
 function autoSubmit() { submitUjian(true); }
 
+function updateDashboardSyncBannerUI(state, extraInfo) {
+  const banner = document.getElementById('dashboardSyncBanner');
+  const textElem = document.getElementById('dashboardSyncStatusText');
+  if (!banner || !textElem) return;
+
+  banner.className = 'sync-banner';
+  const lastSync = localStorage.getItem('lastDashboardSyncTime');
+  const isPending = !!localStorage.getItem('pendingDashboardSync');
+  const hasSheetUrl = !!configGoogleSheetUrl;
+
+  if (state === 'syncing') {
+    banner.classList.add('sync-banner-info');
+    textElem.innerHTML = '<span class="sync-pulse sync-pulse-yellow"></span><span>⏳ Sedang menyinkronkan pengaturan ke Google Spreadsheet...</span>';
+    return;
+  }
+
+  if (state === 'success') {
+    banner.classList.add('sync-banner-success');
+    textElem.innerHTML = '<span class="sync-pulse sync-pulse-green"></span><span>✅ Pengaturan berhasil tersinkron ke Google Spreadsheet (' + (extraInfo || new Date().toLocaleTimeString('id-ID')) + ').</span>';
+    return;
+  }
+
+  if (!navigator.onLine) {
+    banner.classList.add('sync-banner-offline');
+    textElem.innerHTML = '<span class="sync-pulse sync-pulse-red"></span><span>📡 <strong>OFFLINE:</strong> Pengaturan tersimpan aman di perangkat ini. Menunggu terhubung ke Internet untuk sinkronisasi otomatis.</span>';
+    return;
+  }
+
+  if (isPending) {
+    banner.classList.add('sync-banner-warning');
+    textElem.innerHTML = '<span class="sync-pulse sync-pulse-yellow"></span><span>⚠️ Ada perubahan data tersimpan di perangkat yang belum tersinkron ke spreadsheet. Menghubungkan...</span>';
+    return;
+  }
+
+  if (!hasSheetUrl) {
+    banner.classList.add('sync-banner-info');
+    textElem.innerHTML = '<span class="sync-pulse sync-pulse-green"></span><span>💾 Tersimpan otomatis di perangkat ini. (Masukkan Google Sheet URL di Panel 9 untuk sinkronisasi cloud).</span>';
+    return;
+  }
+
+  banner.classList.add('sync-banner-success');
+  textElem.innerHTML = '<span class="sync-pulse sync-pulse-green"></span><span>🟢 Mode Online: Semua perubahan tersimpan & tersinkron' + (lastSync ? ' (Terakhir: ' + lastSync + ')' : '') + '.</span>';
+}
+
+async function syncDashboardGuru(payload) {
+  if (!configGoogleSheetUrl) {
+    updateDashboardSyncBannerUI();
+    return false;
+  }
+
+  if (!navigator.onLine) {
+    updateDashboardSyncBannerUI('offline');
+    return false;
+  }
+
+  updateDashboardSyncBannerUI('syncing');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+  try {
+    await fetch(configGoogleSheetUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    localStorage.removeItem('pendingDashboardSync');
+    const syncTimeStr = new Date().toLocaleTimeString('id-ID');
+    localStorage.setItem('lastDashboardSyncTime', syncTimeStr);
+    updateDashboardSyncBannerUI('success', syncTimeStr);
+    return true;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn('Gagal sinkronisasi dashboard guru:', err);
+    updateDashboardSyncBannerUI(navigator.onLine ? 'pending' : 'offline');
+    return false;
+  }
+}
+
+async function prosesAntreanDashboardSync() {
+  const pending = localStorage.getItem('pendingDashboardSync');
+  if (!pending) {
+    updateDashboardSyncBannerUI();
+    return;
+  }
+  if (!navigator.onLine) {
+    updateDashboardSyncBannerUI('offline');
+    return;
+  }
+  if (!configGoogleSheetUrl) return;
+
+  try {
+    const payload = JSON.parse(pending);
+    await syncDashboardGuru(payload);
+  } catch (err) {
+    console.error('Error memproses antrean dashboard sync:', err);
+  }
+}
+
+function syncDashboardGuruManual() {
+  simpanDataDashboardOtomatis(false);
+  const payload = kumpulkanSemuaDataDashboard();
+  localStorage.setItem('pendingDashboardSync', JSON.stringify(payload));
+  if (!navigator.onLine) {
+    alert('📡 Perangkat sedang OFFLINE. Data pengaturan telah tersimpan di browser Anda dan otomatis dikirim saat terhubung ke Internet.');
+    updateDashboardSyncBannerUI('offline');
+    return;
+  }
+  if (!configGoogleSheetUrl) {
+    alert('ℹ️ Masukkan URL Google Apps Script Web App terlebih dahulu di Panel 9 untuk sinkronisasi otomatis ke Google Spreadsheet.');
+    updateDashboardSyncBannerUI();
+    return;
+  }
+  syncDashboardGuru(payload).then(success => {
+    if (success) {
+      alert('✅ Sinkronisasi berhasil! Pengaturan Dashboard Guru telah diperbarui di Google Spreadsheet.');
+    } else {
+      alert('📡 Pengiriman tertunda karena masalah koneksi. Data tetap tersimpan aman dan otomatis dicoba kembali.');
+    }
+  });
+}
+
 async function prosesAntreanSheet() {
   const pendingDataStr = localStorage.getItem('pendingSheetPayload');
   if (!pendingDataStr || !configGoogleSheetUrl) return;
@@ -1728,13 +2112,25 @@ function konfirmasiReset() {
 }
 
 window.addEventListener('online', () => {
-  console.log('Koneksi terdeteksi (online). Memproses antrean pengiriman nilai...');
+  console.log('Koneksi terdeteksi (online). Memproses antrean...');
   prosesAntreanSheet();
+  prosesAntreanDashboardSync();
+  updateDashboardSyncBannerUI();
+});
+
+window.addEventListener('offline', () => {
+  console.log('Koneksi terputus (offline).');
+  updateDashboardSyncBannerUI('offline');
 });
 
 setInterval(() => {
-  if (localStorage.getItem('pendingSheetPayload') && navigator.onLine) {
-    prosesAntreanSheet();
+  if (navigator.onLine) {
+    if (localStorage.getItem('pendingSheetPayload')) {
+      prosesAntreanSheet();
+    }
+    if (localStorage.getItem('pendingDashboardSync')) {
+      prosesAntreanDashboardSync();
+    }
   }
 }, 10000);
 
